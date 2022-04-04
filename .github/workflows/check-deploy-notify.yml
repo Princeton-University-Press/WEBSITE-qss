@@ -1,5 +1,4 @@
 # This workflow will fetch from the parent repo, check for changes in folders, and then zip, deploy, and notify if any have changed.
-
 name: Sync, Deploy, and Notify
 
 # Run workflow via cron at 12:30 ET
@@ -8,7 +7,7 @@ on:
     - cron: "30 05 * * *"
 jobs:
   check:
-
+  
     name: Check upstream
     outputs:
       run_job: ${{ steps.check_files.outputs.run_job }}
@@ -46,6 +45,7 @@ jobs:
         done < files.txt
 
   deploy_notify:
+  
     name: Deploy zip files to S3 and notify textbooks team
     needs: check
     if: needs.check.outputs.run_job == 'true'
@@ -58,14 +58,13 @@ jobs:
           dest: Intro.zip
       - name: run for 'Intro' folder
         run: echo "This job runs only when all the modified files are under the 'Intro' folder."
-     - name: Upload zip to S3 bucket
-       uses: tpaschalis/s3-sync-action@master
-       with:
+      - name: Upload zip to S3 bucket
+        uses: tpaschalis/s3-sync-action@master
+        with:
          args: --acl public-read
-       env:
+        env:
          FILE: ./Intro.zip
          AWS_REGION: 'us-east-1'
          AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-
