@@ -16,8 +16,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
-        with:
-          fetch-depth: 2
+      with:
+        fetch-depth: 2
     - name: Fetch upstream
       uses: 135e2/sync-upstream-repo@v0.1.5
       with:
