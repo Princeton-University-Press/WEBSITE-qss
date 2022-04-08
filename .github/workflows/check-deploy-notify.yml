@@ -2,12 +2,12 @@
 name: Sync, Deploy, and Notify
 
 # Run workflow via cron at 12:30 ET
-on: 
+on:
   schedule:
     - cron: "30 05 * * *"
 jobs:
   check:
-  
+
     name: Check upstream
     outputs:
       run_job: ${{ steps.check_files.outputs.run_job }}
@@ -35,36 +35,89 @@ jobs:
         while IFS= read -r file
         do
           echo $file
-          if [[ $file != Intro/* ]]; then
-            echo "This modified file is not under the 'Intro' folder."
-            echo "::set-output name=run_job::false"
+          if [[ $file == CAUSALITY/* ]]; then
+            echo "This modified file is not under the 'CAUSALITY' folder."
+            echo "::set-output name=run_job::CAUSALITY"
+            break
+          elif [[ $file == DISCOVERY/* ]]; then
+            echo "This modified file is not under the 'DISCOVERY' folder."
+            echo "::set-output name=run_job::DISCOVERY"
+            break
+          elif [[ $file == errata/* ]]; then
+            echo "This modified file is not under the 'errata' folder."
+            echo "::set-output name=run_job::errata"
+            break
+          elif [[ $file == INTRO/* ]]; then
+            echo "This modified file is not under the 'INTRO' folder."
+            echo "::set-output name=run_job::INTRO"
+            break
+          elif [[ $file == MEASUREMENT/* ]]; then
+            echo "This modified file is not under the 'MEASUREMENT' folder."
+            echo "::set-output name=run_job::MEASUREMENT"
+            break
+          elif [[ $file == PREDICTION/* ]]; then
+            echo "This modified file is not under the 'PREDICTION' folder."
+            echo "::set-output name=run_job::PREDICTION"
+            break
+          elif [[ $file == PROBABILITY/* ]]; then
+            echo "This modified file is not under the 'PROBABILITY' folder."
+            echo "::set-output name=run_job::PROBABILITY"
+            break
+          elif [[ $file == syllabus/* ]]; then
+            echo "This modified file is not under the 'syllabus' folder."
+            echo "::set-output name=run_job::syllabus"
+            break
+          elif [[ $file == UNCERTAINTY/* ]]; then
+            echo "This modified file is not under the 'UNCERTAINTY' folder."
+            echo "::set-output name=run_job::UNCERTAINTY"
             break
           else
             echo "::set-output name=run_job::true"
           fi
         done < files.txt
 
-  deploy_notify:
-  
-    name: Deploy zip files to S3 and notify textbooks team
+  zip_full:
+
+    name: Create zip files for S3
     needs: check
-    if: needs.check.outputs.run_job == 'true'
+    if: needs.check.outputs.run_job != 'false'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
       - uses: papeloto/action-zip@v1
         with:
-          files: Intro/
-          dest: Intro.zip
-      - name: run for 'Intro' folder
-        run: echo "This job runs only when all the modified files are under the 'Intro' folder."
-      - name: Upload zip to S3 bucket
-        uses: tpaschalis/s3-sync-action@master
+          files: CAUSALITY/ DISCOVERY/ errata/ INTRO/ MEASUREMENT/ PREDICTION/ PROBABILITY/ syllabus/ UNCERTAINTY/
+          dest: QSS.zip
+      - name: run for repo
+        run: echo "This job runs only when the repo has modified files."
+      - uses: keithweaver/aws-s3-github-action@master
         with:
-         args: --acl public-read
-        env:
-         FILE: ./Intro.zip
-         AWS_REGION: 'us-east-1'
-         AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
-         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          command: cp
+          source: ./QSS.zip
+          destination: s3://${{ secrets.AWS_S3_BUCKET }}/QSS.zip
+          aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws_region: 'us-east-1'
+
+  zip_folders:
+
+    name: Create zip files of each folder for S3
+    needs: check
+    if: needs.check.outputs.run_job == 'CAUSALITY'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: papeloto/action-zip@v1
+        with:
+          files: CAUSALITY/
+          dest: CAUSALITY.zip
+      - name: run for repo
+        run: echo "This job runs only when the repo has modified files."
+      - uses: keithweaver/aws-s3-github-action@master
+        with:
+          command: cp
+          source: ./CAUSALITY.zip
+          destination: s3://${{ secrets.AWS_S3_BUCKET }}/CAUSALITY.zip
+          aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws_region: 'us-east-1'
