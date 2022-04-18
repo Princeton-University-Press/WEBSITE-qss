@@ -11,6 +11,9 @@ jobs:
     name: Check upstream
     outputs:
       run_job: ${{ steps.check_files.outputs.run_job }}
+      email_body: ${{ steps.check_files.outputs.email_body }}
+      folders_string: ${{ steps.folders_string.outputs.string}}
+      folders_json: ${{ steps.folders_json.outputs.json}}
     runs-on: ubuntu-latest
 
     steps:
@@ -21,60 +24,36 @@ jobs:
       uses: 135e2/sync-upstream-repo@v0.1.5
       with:
       #Git upstream repo
-        upstream_repo: https://github.com/kosukeimai/qss.git
+        upstream_repo: ${{ secrets.UPSTREAM }}
         upstream_branch: master
         local_branch: master
+        github_token: ${{ secrets.GITHUB_TOKEN }}
     - name: check modified files
       id: check_files
       run: |
-        echo "=============== list modified files ==============="
-        git diff --name-only HEAD^ HEAD
+        # echo "=============== list modified files ==============="
+        # git diff --name-only HEAD^ HEAD
 
-        echo "========== check paths of modified files =========="
+        # echo "========== check paths  of modified files =========="
         git diff --name-only HEAD^ HEAD > files.txt
         while IFS= read -r file
         do
           echo $file
-          if [[ $file == CAUSALITY/* ]]; then
-            echo "This modified file is not under the 'CAUSALITY' folder."
-            echo "::set-output name=run_job::CAUSALITY"
-            break
-          elif [[ $file == DISCOVERY/* ]]; then
-            echo "This modified file is not under the 'DISCOVERY' folder."
-            echo "::set-output name=run_job::DISCOVERY"
-            break
-          elif [[ $file == errata/* ]]; then
-            echo "This modified file is not under the 'errata' folder."
-            echo "::set-output name=run_job::errata"
-            break
-          elif [[ $file == INTRO/* ]]; then
-            echo "This modified file is not under the 'INTRO' folder."
-            echo "::set-output name=run_job::INTRO"
-            break
-          elif [[ $file == MEASUREMENT/* ]]; then
-            echo "This modified file is not under the 'MEASUREMENT' folder."
-            echo "::set-output name=run_job::MEASUREMENT"
-            break
-          elif [[ $file == PREDICTION/* ]]; then
-            echo "This modified file is not under the 'PREDICTION' folder."
-            echo "::set-output name=run_job::PREDICTION"
-            break
-          elif [[ $file == PROBABILITY/* ]]; then
-            echo "This modified file is not under the 'PROBABILITY' folder."
-            echo "::set-output name=run_job::PROBABILITY"
-            break
-          elif [[ $file == syllabus/* ]]; then
-            echo "This modified file is not under the 'syllabus' folder."
-            echo "::set-output name=run_job::syllabus"
-            break
-          elif [[ $file == UNCERTAINTY/* ]]; then
-            echo "This modified file is not under the 'UNCERTAINTY' folder."
-            echo "::set-output name=run_job::UNCERTAINTY"
+          if [[ $file != '' ]]; then
+            echo "Modified files found."
+            echo "::set-output name=run_job::true"
+            echo "::set-output name=email_body::$file"
             break
           else
-            echo "::set-output name=run_job::true"
+            echo "::set-output name=run_job::false"
           fi
         done < files.txt
+    - name: list folders string
+      id: folders_string
+      run: echo "::set-output name=string::$(ls -d */)"
+    - name: list folders json
+      id: folders_json
+      run: echo "::set-output name=json::$(ls -d */ | jq -R -s -c 'split("\/\n")[:-1]')"
 
   zip_full:
 
@@ -83,41 +62,66 @@ jobs:
     if: needs.check.outputs.run_job != 'false'
     runs-on: ubuntu-latest
     steps:
+      - name: Create full zip
       - uses: actions/checkout@v2
       - uses: papeloto/action-zip@v1
         with:
-          files: CAUSALITY/ DISCOVERY/ errata/ INTRO/ MEASUREMENT/ PREDICTION/ PROBABILITY/ syllabus/ UNCERTAINTY/
-          dest: QSS.zip
-      - name: run for repo
-        run: echo "This job runs only when the repo has modified files."
+          files: ${{ steps.check.outputs.folders_string }}
+          dest: ${{ secrets.REPO }}.zip
       - uses: keithweaver/aws-s3-github-action@master
         with:
           command: cp
-          source: ./QSS.zip
-          destination: s3://${{ secrets.AWS_S3_BUCKET }}/QSS.zip
+          source: ./${{ secrets.REPO }}.zip
+          destination: ${{ secrets.AWS_S3_BUCKET }}/${{ secrets.REPO }}.zip
           aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws_region: 'us-east-1'
 
   zip_folders:
 
-    name: Create zip files of each folder for S3
-    needs: check
-    if: needs.check.outputs.run_job == 'CAUSALITY'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: papeloto/action-zip@v1
-        with:
-          files: CAUSALITY/
-          dest: CAUSALITY.zip
-      - name: run for repo
-        run: echo "This job runs only when the repo has modified files."
-      - uses: keithweaver/aws-s3-github-action@master
-        with:
-          command: cp
-          source: ./CAUSALITY.zip
-          destination: s3://${{ secrets.AWS_S3_BUCKET }}/CAUSALITY.zip
-          aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws_region: 'us-east-1'
+      name: Create folder zips
+      needs: check
+      if: needs.check.outputs.run_job != 'false'
+      runs-on: ubuntu-latest
+      strategy:
+        matrix:
+            folders: ${{ fromJson(needs.check.outputs.folders_json) }}
+      steps:
+        - uses: actions/checkout@v2
+        - uses: papeloto/action-zip@v1
+          with:
+            files: ${{ matrix.folders }}
+            dest: ${{ secrets.REPO }}-${{ matrix.folders }}.zip
+        - name: run for repo
+          run: echo "This job runs only when the repo has modified files."
+        - uses: keithweaver/aws-s3-github-action@master
+          with:
+            command: cp
+            source: ./${{ secrets.REPO }}-${{ matrix.folders }}.zip
+            destination: ${{ secrets.AWS_S3_BUCKET }}/${{ secrets.REPO }}-${{ matrix.folders }}.zip
+            aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+            aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            aws_region: 'us-east-1'
+
+  # TODO: Add email notification with granularity of which files have changed.
+  # send_mail:
+
+  #   name: Send email notification
+  #   needs: check
+  #   if: needs.check.outputs.run_job != 'false'
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #   - name: Send mail
+  #     uses: dawidd6/action-send-mail@v3
+  #     with:
+  #       server_address: smtp.sendgrid.net
+  #       server_port: 587
+  #       username: apikey
+  #       password: ${{secrets.MAIL}}
+  #       subject: New files available for ${{ secrets.REPO }}
+  #       to: sean@crowdcg.com
+  #       from: Princeton University Press <webmaster@press.princeton.edu>
+  #       secure: true
+  #       body: The following folders have changed, ${{ needs.check.outputs.email_body }}
+  #       bcc: team@crowdcg.com
+  #       reply_to: webmaster@press.princeton.edu
